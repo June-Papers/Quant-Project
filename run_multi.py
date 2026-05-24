@@ -19,6 +19,10 @@ from quant.report import (
     build_performance_table,
     build_phase_performance_table,
     build_factor_excess_table,
+    build_annual_return_table,
+    build_backtest_excel_tables,
+    read_excel_template,
+    write_excel_report,
     compute_monthly_returns,
     compute_phase_labels,
     compute_phase_summary,
@@ -49,6 +53,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data-path", type=str, default="../data", help="Path to source parquet data")
     parser.add_argument("--output-dir", type=str, default="output", help="Output directory for report files")
     parser.add_argument("--report-name", type=str, default="multi_strategy_report", help="Base report filename")
+    parser.add_argument("--excel-template", type=str, default=None, help="Optional Excel template file to read when generating the workbook")
+    parser.add_argument("--excel-output", type=str, default=None, help="Optional Excel output file path")
     parser.add_argument("--debug", action="store_true", help="Print debug info for each strategy")
     return parser.parse_args()
 
@@ -137,15 +143,25 @@ def apply_universe_filter(
 def build_overview_text(configs: List[Dict]) -> str:
     description_lines = [
         "## 요약\n\n",
-        "이 리포트는 여러 개의 전략을 코스피 벤치마크와 비교하는 다중 전략 백테스트 결과를 담고 있습니다.\n\n",
-        "각 전략은 동일한 KOSPI 유니버스를 기반으로 하며, 시장/섹터 구성, 신호 방향, 가중치 방식 및 최적화 방식을 비교합니다.\n\n",
-        "벤치마크는 KOSPI 전체 지수이며, 전략 성과, 국면별 성과 및 연간 초과 수익률을 함께 제공합니다.\n\n",
-        "전략 구성:\n",
+        "이 리포트는 KOSPI 유니버스를 기반으로 한 여러 전략을 벤치마크와 비교합니다.\n\n",
+        "전략 엔진은 다음과 같은 설계를 따릅니다:\n",
+        "1) group == Sector: 시장의 섹터 비중을 추종하며, 섹터 내에서 후보 종목 비중을 결정합니다.\n",
+        "2) group == Market: 섹터 구분 없이 전체 시장에서 신호에 따라 종목을 선별합니다.\n",
+        "3) 각 전략은 top_pct를 사용해 1차 후보군을 구성하고, allocation 방식에 따라 비중을 최적화합니다.\n",
+        "4) 최종 포트폴리오는 최대 종목 비중(max_weight)을 반영해 과도한 집중도를 제한합니다.\n\n",
+        "전략별 구성:\n",
     ]
 
     for config in configs:
+        label = "섹터 내" if config["group"] == "Sector" else "섹터 구분 없이"
+        if config["allocation"] == "signal":
+            allocation_text = f"{config['weighting']} 방식으로 편입합니다."
+        else:
+            allocation_text = f"{config['allocation']} 방식으로 비중을 최적화합니다."
+
         description_lines.append(
-            f"- {config['name']}: {config['factor'].upper()} / {config['group']} / {config['direction']} / {config['weighting']} / {config['allocation']} / top_pct={config['top_pct']:.0%} / max_weight={config['max_weight']} / reb_freq={config['reb_freq']} / tx_cost={config['transaction_cost']:.4f}\n"
+            f"- {config['name']}: {label} {config['direction']} {config['factor']} 종목을 top_pct={config['top_pct']:.0%}로 1차 후보군으로 설정하고, {allocation_text} "
+            f"최대 종목 비중은 {config['max_weight']:.2%}입니다.\n"
         )
 
     return "".join(description_lines)
@@ -183,7 +199,9 @@ def main() -> None:
     portfolio_results: Dict[str, Dict[str, pd.Series]] = {}
     summary_metrics: Dict[str, Dict[str, float]] = {}
     factor_excess: Dict[str, pd.DataFrame] = {}
+    annual_excess_returns: Dict[str, pd.DataFrame] = {}
     phase_cagr_dict: Dict[str, pd.Series] = {}
+    config_by_name: Dict[str, Dict] = {}
 
     phase_labels = compute_phase_labels(benchmark["cum_return"])
 
@@ -209,8 +227,10 @@ def main() -> None:
         )
 
         portfolio_results[config["name"]] = result
+        config_by_name[config["name"]] = config
         summary_metrics[config["name"]] = performance_summary(result)
         factor_excess[config["name"]] = build_factor_excess_table(result["portfolio_return"], benchmark["return"])
+        annual_excess_returns[config["name"]] = build_annual_return_table(result["portfolio_return"], benchmark["return"])[["Excess"]]
 
         strategy_monthly = compute_monthly_returns(result["portfolio_return"])
         strategy_phase_summary, _ = compute_phase_summary(strategy_monthly, phase_labels)
@@ -238,10 +258,29 @@ def main() -> None:
         benchmark=benchmark,
         phase_cagr=phase_table,
         factor_excess=factor_excess,
-        strategy_cum_return=next(iter(equity_curves.values())),
+        strategy_cum_return=next(iter(equity_curves.values())) if equity_curves else None,
         benchmark_cum_return=benchmark["cum_return"],
-        annual_excess_returns=pd.DataFrame(),
+        annual_excess_returns=annual_excess_returns,
     )
+
+    excel_output = Path(args.excel_output) if args.excel_output else output_dir / f"{args.report_name}.xlsx"
+    template_data = None
+    if args.excel_template:
+        template_data = read_excel_template(Path(args.excel_template))
+    write_excel_report(
+        excel_output,
+        tables=build_backtest_excel_tables(
+            strategy_results=portfolio_results,
+            benchmark_return=benchmark["return"],
+            close=close,
+            cap=cap,
+            sector=sector,
+            data_path=Path(args.data_path),
+            strategy_configs=config_by_name,
+        ),
+        template_data=template_data,
+    )
+    print(f"Excel report generated: {excel_output}")
 
     assembler = ReportAssembler(output_dir)
     markdown_path = assembler.write_markdown(

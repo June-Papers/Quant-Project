@@ -1,5 +1,6 @@
 from .docx_report import ReportAssembler
 from .charts import generate_report_charts
+from .excel_report import build_backtest_excel_tables, read_excel_template, write_excel_report
 from .tables import (
     build_strategy_overview,
     build_performance_table,
@@ -30,4 +31,7 @@ __all__ = [
     "compute_monthly_returns",
     "compute_phase_labels",
     "compute_phase_summary",
+    "read_excel_template",
+    "build_backtest_excel_tables",
+    "write_excel_report",
 ]

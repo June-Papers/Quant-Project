@@ -10,7 +10,13 @@ except ImportError:
 
 
 def dataframe_to_markdown(df: pd.DataFrame) -> str:
-    return df.to_markdown(index=True)
+    df_formatted = df.copy()
+    for col in df_formatted.columns:
+        if pd.api.types.is_numeric_dtype(df_formatted[col].dtype):
+            df_formatted[col] = df_formatted[col].map(
+                lambda v: "" if pd.isna(v) else f"{v:.2f}"
+            )
+    return df_formatted.to_markdown(index=True)
 
 
 class ReportAssembler:
@@ -72,7 +78,10 @@ class ReportAssembler:
                 row_cells = table.add_row().cells
                 row_cells[0].text = str(index_label)
                 for col_idx, value in enumerate(row, start=1):
-                    row_cells[col_idx].text = str(round(value, 6) if isinstance(value, (int, float)) else value)
+                    if isinstance(value, (int, float)):
+                        row_cells[col_idx].text = f"{value:.2f}"
+                    else:
+                        row_cells[col_idx].text = str(value)
 
         for label, image_path in images.items():
             doc.add_heading(label.replace('_', ' ').title(), level=2)

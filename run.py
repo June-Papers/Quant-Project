@@ -17,6 +17,9 @@ from quant.report import (
     generate_report_charts,
     build_strategy_overview,
     build_factor_excess_table,
+    build_backtest_excel_tables,
+    read_excel_template,
+    write_excel_report,
     compute_monthly_returns,
     compute_phase_labels,
     compute_phase_summary,
@@ -50,6 +53,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data-path", type=str, default="../data", help="Path to source parquet data")
     parser.add_argument("--output-dir", type=str, default="output", help="Output directory for report files")
     parser.add_argument("--report-name", type=str, default="strategy_report", help="Base report filename")
+    parser.add_argument("--excel-template", type=str, default=None, help="Optional Excel template file to read when generating the workbook")
+    parser.add_argument("--excel-output", type=str, default=None, help="Optional Excel output file path")
     parser.add_argument("--debug", action="store_true", help="Print debug info for first rebalance date")
     return parser.parse_args()
 
@@ -223,8 +228,27 @@ def main() -> None:
         factor_excess={config["factor"].upper(): excess_df},
         strategy_cum_return=result["cum_return"],
         benchmark_cum_return=benchmark["cum_return"],
-        annual_excess_returns=annual_returns_df[["Excess"]],
+        annual_excess_returns={config["factor"].upper(): annual_returns_df[["Excess"]]},
     )
+
+    excel_output = Path(args.excel_output) if args.excel_output else output_dir / f"{args.report_name}.xlsx"
+    template_data = None
+    if args.excel_template:
+        template_data = read_excel_template(Path(args.excel_template))
+    write_excel_report(
+        excel_output,
+        tables=build_backtest_excel_tables(
+            strategy_results={config["factor"]: result},
+            benchmark_return=benchmark["return"],
+            close=close,
+            cap=cap,
+            sector=sector,
+            data_path=Path(args.data_path),
+            strategy_configs={config["factor"]: config},
+        ),
+        template_data=template_data,
+    )
+    print(f"Excel report generated: {excel_output}")
 
     report_overview = build_report_overview(config, benchmark["cum_return"], summary, benchmark_summary)
 

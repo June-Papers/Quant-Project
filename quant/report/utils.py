@@ -94,16 +94,26 @@ def build_annual_return_table(portfolio_ret: pd.Series, benchmark_ret: pd.Series
 
 
 def build_report_overview(config: Dict, benchmark_cum: pd.Series, summary: Dict[str, float], benchmark_summary: Dict[str, float]) -> str:
-    group_text = (
-        "섹터와 상관없이" if config["group"] == "Market" else "시장의 섹터 비중을 추종하면서 섹터 내"
-    )
+    if config["group"] == "Sector":
+        selection_text = (
+            f"시장 섹터 비중을 추종하며 섹터 내 {config['direction']} {config['factor']} 종목을 "
+            f"상위 {config['top_pct']:.0%}로 1차 후보군에 포함합니다."
+        )
+    else:
+        selection_text = (
+            f"섹터 구분 없이 전체 시장에서 {config['direction']} {config['factor']} 종목을 "
+            f"상위 {config['top_pct']:.0%}로 1차 후보군에 포함합니다."
+        )
+
     if config["allocation"] == "signal":
         allocation_text = (
-            f"편입 비중은 {config['weighting']} 방식으로 설정하였으며, 종목별 최대 비중 한도는 {config['max_weight']} 입니다."
+            f"1차 후보군에서 선정된 종목은 {config['weighting']} 신호 기반 비중으로 편입하며, "
+            f"최대 종목 비중은 {config['max_weight']:.2%}로 제한합니다."
         )
     else:
         allocation_text = (
-            f"{config['factor']} 상위 {config['top_pct']:.0%} 종목을 {config['allocation']} 방식으로 최적화하여 편입하는 방법입니다."
+            f"1차 후보군에서 선정된 종목은 {config['allocation']} 방식으로 비중을 최적화하며, "
+            f"최대 종목 비중은 {config['max_weight']:.2%}로 제한합니다."
         )
 
     cagr = summary.get("CAGR", float("nan"))
@@ -118,14 +128,12 @@ def build_report_overview(config: Dict, benchmark_cum: pd.Series, summary: Dict[
     relative = "우수한" if cagr > benchmark_cagr else "낮은"
     performance_text = (
         f"백테스트 기간 해당 전략의 CAGR은 {cagr:.2%}로 코스피 대비 {relative} 성과를 기록했으며 "
-        f"MDD의 경우 {mdd:.2%}로 최대 낙폭을 기록했습니다. 샤프지수의 경우 벤치마크 대비 "
-        f"{'개선' if sharpe_val > 0 else '악화'}되며 {sharpe_val:.2f}의 성과를 보였습니다."
+        f"MDD는 {mdd:.2%}로 집계되었습니다. 샤프지수는 {sharpe_val:.2f}로 평가됩니다."
     )
 
     return (
         "## 요약\n\n"
         "이 리포트는 KOSPI 기반 유니버스를 사용하여 하나의 전략을 백테스트하고 전략 개요, 성과 요약, 국면별 분석 및 초과 수익률을 제공합니다.\n\n"
-        f"해당 리포트는 {group_text} {config['direction']} {config['factor']} 상위 {config['top_pct']:.0%} 종목을 편입하는 전략입니다. "
-        f"{allocation_text}\n\n"
+        f"{selection_text} {allocation_text}\n\n"
         f"{performance_text}"
     )

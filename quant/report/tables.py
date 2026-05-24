@@ -13,6 +13,8 @@ def build_strategy_overview(configs: List[Dict]) -> pd.DataFrame:
             "Direction": cfg["direction"],
             "Weighting": cfg["weighting"],
             "Allocation": cfg["allocation"],
+            "Top N": cfg.get("top_n", ""),
+            "Top Pct": f"{cfg.get('top_pct', 0):.0%}",
             "Max Weight": cfg["max_weight"],
             "Rebalance": cfg["reb_freq"],
             "Transaction Cost": cfg["transaction_cost"],

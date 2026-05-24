@@ -1,4 +1,5 @@
 from pathlib import Path
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import pandas as pd
 
@@ -68,13 +69,37 @@ def save_drawdown_curves(strategy_series, benchmark_series, path: Path, title: s
     return path
 
 
+def _format_yearly_xticks(ax: plt.Axes, index) -> None:
+    if len(index) == 0:
+        return
+    if isinstance(index, pd.DatetimeIndex) or pd.api.types.is_datetime64_any_dtype(index):
+        if len(index) > 1:
+            yearly_ticks = [group.index[0] for _, group in index.to_series().groupby(index.year)]
+        else:
+            yearly_ticks = [index[0]]
+        labels = [dt.strftime("%Y") for dt in yearly_ticks]
+        ax.set_xticks(yearly_ticks)
+        ax.set_xticklabels(labels, rotation=45, ha="right")
+        return
+
+    labels = [str(value) for value in index]
+    positions = range(len(labels))
+    ax.set_xticks(list(positions))
+    ax.set_xticklabels(labels, rotation=45, ha="right")
+
+
 def save_excess_return_bar_chart(df: pd.DataFrame, path: Path, title: str = "Factor Excess Return") -> Path:
     fig, ax = plt.subplots(figsize=(10, 5))
     df = df.dropna()
-    ax.bar(df.index.astype(str), df["Excess"].values, color="tab:blue", alpha=0.7)
+    if isinstance(df.index, pd.DatetimeIndex) or pd.api.types.is_datetime64_any_dtype(df.index):
+        x_values = df.index
+    else:
+        x_values = range(len(df))
+    ax.bar(x_values, df["Excess"].values, color="tab:blue", alpha=0.7)
     ax.set_title(title)
     ax.set_xlabel("Year")
     ax.set_ylabel("Excess Return")
+    _format_yearly_xticks(ax, df.index)
     ax.grid(True, linestyle="--", alpha=0.5)
     fig.tight_layout()
     fig.savefig(path, dpi=150)
@@ -102,11 +127,13 @@ def save_phase_performance_bar(df: pd.DataFrame, path: Path, title: str = "Phase
 
 def save_excess_return_chart(df: pd.DataFrame, path: Path, title: str = "Factor Excess Return") -> Path:
     fig, ax = plt.subplots(figsize=(10, 5))
+    df = df.dropna()
     for col in df.columns:
         ax.plot(df.index, df[col].values, label=col)
     ax.set_title(title)
     ax.set_xlabel("Date")
     ax.set_ylabel("Return")
+    _format_yearly_xticks(ax, df.index)
     ax.legend(loc="best")
     ax.grid(True, linestyle="--", alpha=0.5)
     fig.tight_layout()
